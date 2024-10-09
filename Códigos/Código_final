@@ -1,0 +1,336 @@
+/* PROYECTO NH3
+Autores: Karen Melissa Prada Rodriguez
+         Ashely Daniela Amaya López
+Año: 2024
+*/
+
+#include <math.h>
+#include <HardwareSerial.h>
+
+#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP  (60ULL * uS_TO_S_FACTOR) /* Time ESP32 will go to sleep (5min en microsegundos) */
+
+#define RL 47  // Valor de RL = 47K
+#define m -0.1053 // Pediente experimental
+#define b 0.2816 // Interseccion experimental
+#define Ro 30 // Valor encontrado de Ro
+#define MQ_sensor 4 // Sensor conectado al pin D4
+
+const int LED_PIN = 2;  // Pin GPIO para el LED
+
+int pinBateria = 35;  // Batería conectada al pin 35
+// Resistencias del divisor de voltaje
+ float R1 = 15000.0;  // 15kΩ
+float R2 = 8200.0;   // 8.2kΩ
+// Convertidor ADC
+  int resolucionADC; 
+// Variables
+  float voltajeBateria;
+  float porcentajeBateria;
+
+RTC_DATA_ATTR int bootCount = 0;
+
+HardwareSerial uart1(1);
+
+void setup() {
+    pinMode(23, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
+
+    resolucionADC = 4095;  // ESP32 tiene 12 bits (0 a 4095)
+    analogReadResolution(12);  // Configurar la resolución del ADC para ESP32
+
+    digitalWrite(LED_PIN, LOW);  // Apagar LED al inicio
+
+    // Configuración del puerto serie para LoRa
+    uart1.begin(57600, SERIAL_8N1, 16, 17); // TX en GPIO16, RX en GPIO17
+
+    // Incrementar el contador de arranques y mostrarlo
+    ++bootCount;
+    Serial.begin(57600);
+    Serial.println("======================");
+    Serial.println("Boot number: " + String(bootCount));
+    Serial.println("======================");
+
+    digitalWrite(23, HIGH);
+
+    test_uart_connection(); //Llamar funciones de conexión a TTN
+    prueba();
+    commands_to_connectLoRa();
+    join_the_things_network();
+
+
+    // Configurar la fuente de despertador
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP);
+    Serial.println("Setup ESP32 to sleep for " + String(TIME_TO_SLEEP / uS_TO_S_FACTOR) + " seconds");
+}
+
+void debug_led_on() {
+    digitalWrite(LED_PIN, HIGH);
+}
+
+void debug_led_off() {
+    digitalWrite(LED_PIN, LOW);
+}
+
+float read_and_calculate_ppm() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    float VRL = analogRead(MQ_sensor)*(3.3/ 4095.0);  // Leer el valor del ADC
+    if (VRL == 0) {
+        debug_led_off();  // Apaga el LED antes de salir
+        return NAN;  // Evitar la división por cero
+    }
+    float Rs = ((3.3 * RL) / VRL) - RL;
+    float ratio = Rs / Ro;
+    float ppm = pow(10, ((log10(ratio) - b) / m));
+    debug_led_off();  // Apaga el LED antes de salir
+    return ppm;
+}
+
+float calculate_average(float values[], int count) {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    if (count == 0) {
+        debug_led_off();  // Apaga el LED antes de salir
+        return NAN;
+    }
+    float sum = 0;
+    for (int i = 0; i < count; i++) {
+        sum += values[i];
+    }
+    debug_led_off();  // Apaga el LED antes de salir
+    return sum / count;
+}
+
+String receive_uart() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    String rxData = "";
+    unsigned long start_time = millis();
+    while (true) {
+        while (uart1.available()) {  // Mantiene leyendo mientras haya datos disponibles
+            char c = uart1.read();
+            rxData += c;  // Agrega el caractér leído al buffer
+        }
+        // Verifica si ha pasado tiempo sin recibir datos
+        if (millis() - start_time > 5000) {
+            break;  // Sale del bucle si ha pasado 5 segundos
+        }
+        delay(10); // Espera un poco para no sobrecargar el CPU
+    }
+    debug_led_off();  // Apaga el LED antes de salir
+    return rxData;
+}
+
+void send_Command(const String& command) {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    uart1.println(command);
+    debug_led_off();  // Apaga el LED antes de salir
+}
+
+void test_uart_connection() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    while (true) {
+        send_Command("mac reset");
+        String data = receive_uart();
+        if (data == "ok\r\n") {
+            Serial.println("LoRa radio is ready");
+            break;  // Sale del bucle si la respuesta es 'ok\r\n'
+        } else {
+            Serial.println("Fail r");
+        }
+    }
+    debug_led_off();  // Apaga el LED antes de salir
+}
+
+void prueba() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    send_Command("radio set pwr 9");
+    String data = receive_uart();
+    if (data == "ok\r\n") {
+        Serial.println("Transmisión épica 1");
+    } else {
+        Serial.println("Fail p");
+        exit(1);
+    }
+    debug_led_off();  // Apaga el LED antes de salir
+}
+
+void commands_to_connectLoRa() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    const char* commands[] = {
+        "mac set deveui 0004A30B001A1C19",
+        "mac set appeui 0000000000000000",
+        "mac set appkey AD6C4D768F385A0F11FB7927D316A4C9",
+        "radio set crc on",
+        "mac save"
+    };
+    
+    for (const char* command : commands) {
+        send_Command(command);
+        String data = receive_uart();
+        if (data == "ok\r\n") {
+            Serial.println(data);
+        } else {
+            Serial.println("Fail");
+            exit(1);
+        }
+    }
+    debug_led_off();  // Apaga el LED antes de salir
+}
+
+void join_the_things_network() {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    while (true) {
+        send_Command("mac join otaa");  // Envía el comando para unirse a la red
+        String data = receive_uart();  // Recibe la primera respuesta, generalmente "ok"
+        Serial.println(data);
+
+        if (data.indexOf("ok") != -1) {
+            unsigned long start_time = millis();
+            while (true) {
+                data = receive_uart();
+                Serial.println(data);
+                if (data.indexOf("accepted") != -1) {
+                    Serial.println("Connection successful!");
+                    debug_led_off();  // Apaga el LED al salir exitosamente
+                    return;
+                } else if (data.indexOf("denied") != -1) {
+                    Serial.println("Attempt denied, retrying...");
+                    break;  // Sale del bucle interno para reintentar el comando
+                }
+
+                if (millis() - start_time > 5000) {
+                    break;  // Sale del bucle interno si se supera el tiempo de espera
+                }
+            }
+        }
+        unsigned long start_time = millis();
+        while (millis() - start_time < 5000) {
+            // Pausa de 5 segundos entre intentos
+        }
+    }
+    debug_led_off();  // Apaga el LED antes de salir si falló
+}
+
+int read_battery_level() {
+ 
+  int lecturaADC = analogRead(pinBateria);
+
+  // Calcular el voltaje leído en el pin analógico
+  float voltajeLeido = (lecturaADC * 3.3) / resolucionADC;  
+  // Calcular el voltaje real de la batería usando el divisor de voltaje
+  voltajeBateria = voltajeLeido * ((R1 + R2) / R2);
+  // Calcular el porcentaje de la batería basado en el voltaje real
+  porcentajeBateria = ((voltajeBateria - 6.0) / (3.0)) * 100;
+
+  // Limitar el porcentaje entre 0% y 100%
+  if (porcentajeBateria > 100) porcentajeBateria = 100;
+  if (porcentajeBateria < 0) porcentajeBateria = 0;
+
+  Serial.print("Voltaje de la bateria: ");
+  Serial.print(voltajeBateria);
+  Serial.print(" V | ");
+  Serial.print("Porcentaje: ");
+  Serial.print(porcentajeBateria);
+  Serial.println("%");
+
+  return porcentajeBateria;
+}
+
+void send_hex(const String& message) {
+    debug_led_on();  // Enciende el LED al entrar en la función
+    Serial.print("Enviando mensaje: ");
+    Serial.println(message);
+    
+    String response;
+    bool success = false; // Variable para controlar el éxito del envío
+    int attempts = 0; // Contador de intentos
+
+    while (!success && attempts < 5) { // Intenta hasta 5 veces
+        send_Command("mac tx cnf 3 " + message); // Envía el comando al módulo LoRa
+        delay(1000); // Espera un momento para asegurarte de que se procese el envío
+
+        Serial.println("Esperando respuesta del servidor...");
+        response = receive_uart();  // Recibe la respuesta inicial
+        Serial.print("Respuesta del módulo LoRa: ");
+        Serial.println(response);
+
+        delay(1000); // Espera un poco más para recibir respuestas adicionales
+        response += receive_uart(); // Recibe más datos si hay
+        Serial.print("Respuesta adicional: ");
+        Serial.println(response);
+
+        // Verifica si la respuesta contiene "ok" o "mac_tx_ok"
+        if (response.indexOf("ok") != -1 || response.indexOf("mac_tx_ok") != -1) {
+            success = true; // Se consideró exitoso el envío
+        } else {
+            Serial.println("Intento fallido, reintentando...");
+            attempts++; // Incrementa el contador de intentos
+            delay(2000); // Espera un poco antes de reintentar
+        }
+    }
+
+    if (success) {
+        Serial.println("Mensaje enviado correctamente.");
+    } else {
+        Serial.println("Falló el envío tras varios intentos.");
+    }
+
+    debug_led_off();  // Apaga el LED antes de salir
+}
+
+void loop() {
+   // Contador de promedios válidos
+    
+    float readings[30];  // Arreglo para las lecturas
+    int count = 0;  // Contador de lecturas válidas
+
+    for (int i = 0; i < 30; i++) {  // Tomar 30 lecturas
+        float ppm = read_and_calculate_ppm();
+        if (!isnan(ppm)) {
+            readings[count++] = ppm;  // Agregar lectura válida
+            Serial.print("PPM: ");
+            Serial.println(ppm);
+        } else {
+            Serial.println("Error al leer el sensor");
+        }
+        unsigned long start_time = millis();
+        // Esperar 2 segundos entre cada lectura
+        while (millis() - start_time <  2000) {
+        }
+    }
+
+    float average_ppm = calculate_average(readings, count);
+    
+    Serial.print("Promedio PPM: ");
+    Serial.println(average_ppm);
+    // Convertir el promedio a hexadecimal
+    String hex_ppm = String((int(average_ppm * 100)) & 0xFFFFF, HEX);
+    while (hex_ppm.length() < 5) {
+        hex_ppm = '0' + hex_ppm; // Asegura que haya al menos 5 caracteres
+    }
+    Serial.print("Hexadecimal Promedio: ");
+    Serial.println(hex_ppm);
+
+    //Bateria
+    int battery_level = read_battery_level();
+    String hex_battery = String(battery_level & 0xFFF, HEX);
+    if (hex_battery.length() < 2) {
+        hex_battery = String('0') + hex_battery;  // Asegura que haya al menos 2 caracteres
+    }
+   
+    // Combinar los dos valores en un solo mensaje hexadecimal
+    String hex_message = hex_ppm + hex_battery;
+    Serial.print("Mensaje Hexadecimal Completo:");
+    Serial.println(hex_message);
+    send_hex(hex_message);  // Enviar datos a TTN
+    unsigned long start_time = millis();
+        while (millis() - start_time < 10000) {
+            // Pausa de 5 segundos entre intentos
+        }
+
+    digitalWrite(23, LOW);
+
+    // Ir a dormir
+    Serial.println("Going to sleep now");
+    esp_deep_sleep_start();  // Entrar en deep sleep
+    
+}
