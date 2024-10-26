@@ -1,0 +1,57 @@
+%Programa MATLAB para calcular las características de las mediciones de amoniaco
+% Datos de entrada
+concentraciones = [5, 172, 338, 505]; % Concentraciones en ppm
+mediciones = [
+    6.16, 192.81, 384.36, 519.44;
+    6.25, 192.38, 363.95, 558.08;
+    6.22, 193.86, 364.75, 524.4;
+    6.02, 196.75, 368.11, 530.42;
+    6.14, 190.44, 356.21, 517.25;
+    5.92, 188.56, 351.83, 541.53;
+    5.72, 190.47, 364.41, 520.4;
+    5.93, 191.1, 364.09, 524.21;
+    6.00, 193.65, 348.28, 526.94;
+    5.81, 191.5, 364, 536.58;
+    5.99, 188.66, 354.35, 528.78;
+    5.78, 184.93, 359.65, 564.26
+];
+
+% Calcular la media de las mediciones para cada concentración
+medias = mean(mediciones);
+
+% Calcular la desviación estándar de las mediciones
+desviacion_estandar = std(mediciones);
+
+% Calcular el error absoluto
+error_absoluto = abs(mediciones - medias); % Diferencia absoluta entre las mediciones y la media
+
+% Calcular el error relativo
+error_relativo = error_absoluto ./ medias * 100; % Error relativo en porcentaje
+
+% Calcular el promedio de los errores absolutos y relativos
+promedio_error_absoluto = mean(error_absoluto);
+promedio_error_relativo = mean(error_relativo);
+
+% Calcular la sensibilidad (diferencia de mediciones sobre la diferencia de concentraciones)
+sensibilidad = diff(medias) ./ diff(concentraciones);
+
+% Calcular la incertidumbre estándar (tipo A)
+incertidumbre = (desviacion_estandar ./ sqrt(size(mediciones, 1))) ;
+
+% Mostrar los resultados
+disp('Promedios de las Mediciones para cada Concentración:');
+disp(medias);
+disp('Matriz de Error Absoluto:');
+disp(error_absoluto);
+disp('Matriz de Error Relativo (%):');
+disp(error_relativo);
+disp('Promedio de Error Absoluto:');
+disp(promedio_error_absoluto);
+disp('Promedio de Error Relativo (%):');
+disp(promedio_error_relativo);
+disp('Desviación Estándar:');
+disp(desviacion_estandar);
+disp('Sensibilidad:');
+disp(sensibilidad);
+disp('Incertidumbre Estándar (Tipo A):');
+disp(incertidumbre);
