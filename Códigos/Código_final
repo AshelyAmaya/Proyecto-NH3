@@ -8,7 +8,7 @@ Año: 2024
 #include <HardwareSerial.h>
 
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  (60ULL * uS_TO_S_FACTOR) /* Time ESP32 will go to sleep (5min en microsegundos) */
+#define TIME_TO_SLEEP  (60ULL * uS_TO_S_FACTOR) /* Tiempo que la ESP32 va a dormir (1min en microsegundos) */
 
 #define RL 47  // Valor de RL = 47K
 #define m -0.1053 // Pediente experimental
